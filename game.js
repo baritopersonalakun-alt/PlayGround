@@ -3,9 +3,11 @@
   const ctx = canvas.getContext('2d');
   const $ = (s) => document.querySelector(s);
   const towerState = { hp: 100, max: 100, dead: false };
-  const hero = { t: .13, side: 0, destT: null, destSide: 0, moving: false, facing: 1 };
+  const hero = { t: .13, side: 0, destT: null, destSide: 0, moving: false, facing: 1, hp: 100, maxHp: 100, mana: 100, maxMana: 100, respawn: 0 };
+  const abilityInfo = { q: { cost: 18, cooldown: 4, damage: 22 }, w: { cost: 20, cooldown: 6 }, e: { cost: 28, cooldown: 7, damage: 32 }, r: { cost: 50, cooldown: 18, damage: 58 } };
+  const cooldowns = { q: 0, w: 0, e: 0, r: 0 };
   let W = 0, H = 0, dpr = 1, last = performance.now(), elapsed = 0;
-  let attackMode = false, attackTimer = 0, hitFlash = 0, projectile = null, soundOn = false;
+  let attackMode = false, attackTimer = 0, hitFlash = 0, projectile = null, spellShots = [], towerShot = null, towerAttackTimer = 0, soundOn = false, fountainActive = false;
   let joystick = { active: false, dx: 0, dy: 0 }, joyPointer = null, toastTimer = 0;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const mix = (a, b, t) => a + (b - a) * t;
@@ -16,6 +18,52 @@
   }
   function towerPoint() { return lanePoint(.54, 0); }
   function heroPoint() { return lanePoint(hero.t, hero.side); }
+  function fountainPoint() { return lanePoint(.035, 0); }
+  function nearFountain() { const p = heroPoint(), f = fountainPoint(); return Math.hypot(p.x - f.x, p.y - f.y) < 70; }
+  function damageTower(amount) {
+    if (towerState.dead) return;
+    towerState.hp = Math.max(0, towerState.hp - amount); hitFlash = 1; maybeSound(300 + Math.random() * 100);
+    if (towerState.hp === 0) {
+      towerState.dead = true; attackMode = false; projectile = null; spellShots = []; towerShot = null; maybeSound(180);
+      $('#victory').classList.add('visible'); $('#objectiveTitle').textContent = 'Lane secured'; $('#objectiveStatus').textContent = 'Destroyed • 0% integrity';
+      $('#attackLabel').textContent = 'VICTORY'; $('#attackSub').textContent = 'Objective complete'; $('#attackButton').classList.remove('engaged');
+      $('#hintText').innerHTML = 'Tower destroyed<br /><b>Objective complete</b>'; showToast('Red Sentinel destroyed');
+    }
+  }
+  function castAbility(key) {
+    const id = key.toLowerCase(), info = abilityInfo[id];
+    if (!info || hero.respawn > 0) return;
+    if (cooldowns[id] > 0) { showToast(`${id.toUpperCase()} is recharging`); return; }
+    if (hero.mana < info.cost) { showToast('Not enough mana'); return; }
+    hero.mana -= info.cost; cooldowns[id] = info.cooldown;
+    const p = heroPoint(), tp = towerPoint();
+    if (id === 'q') {
+      const lane = lanePoint(1), origin = lanePoint(0), dx = lane.dx, dy = lane.dy;
+      spellShots.push({ x: p.x, y: p.y - 14, vx: dx * 470, vy: dy * 470, age: 0, range: 450, traveled: 0, damage: info.damage, color: '#b7f1dc' });
+      maybeSound(540);
+    } else if (id === 'w') {
+      const old = heroPoint(); hero.t = clamp(hero.t + .115, .04, .94); hero.side = clamp(hero.side, -35, 35); hero.destT = null; hero.moving = true;
+      const next = heroPoint(); addBurst(old.x, old.y - 3, '#7fd8ef'); addBurst(next.x, next.y - 3, '#7fd8ef'); maybeSound(720);
+    } else if (id === 'e') {
+      addBurst(p.x, p.y - 6, '#a98bff'); if (!towerState.dead && Math.hypot(p.x - tp.x, p.y - tp.y) < 132) damageTower(info.damage); maybeSound(390);
+    } else if (id === 'r') {
+      if (!towerState.dead && Math.hypot(p.x - tp.x, p.y - tp.y) < 475) { damageTower(info.damage); addBurst(tp.x, tp.y - 18, '#ffd37f'); }
+      else addBurst(p.x, p.y - 8, '#ffd37f');
+      maybeSound(230);
+    }
+    updateAbilityHud();
+  }
+  let bursts = [];
+  function addBurst(x, y, color) { bursts.push({ x, y, color, age: 0, duration: .48 }); }
+  function updateAbilityHud() {
+    for (const id of ['q', 'w', 'e', 'r']) {
+      const btn = document.querySelector(`[data-ability="${id}"]`), info = abilityInfo[id], cd = cooldowns[id];
+      btn.disabled = hero.respawn > 0 || cd > 0 || hero.mana < info.cost;
+      btn.classList.toggle('cooling', cd > 0); btn.classList.toggle('unaffordable', hero.mana < info.cost && cd <= 0);
+      btn.querySelector('.cooldown-mask').style.transform = `scaleY(${cd > 0 ? cd / info.cooldown : 0})`;
+      btn.querySelector('.cooldown-text').textContent = cd > 0 ? Math.ceil(cd) : '';
+    }
+  }
   function resize() {
     const r = canvas.getBoundingClientRect(); W = r.width; H = r.height; dpr = Math.min(devicePixelRatio || 1, 2);
     canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -63,6 +111,13 @@
     label(name, p.x, p.y + r + 21, blue ? '#bce6ed' : '#ffbca8');
   }
   function label(text, x, y, color) { ctx.save(); ctx.font = '600 9px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(9,17,14,.68)'; ctx.fillText(text, x + 1, y + 1); ctx.fillStyle = color; ctx.fillText(text, x, y); ctx.restore(); }
+  function drawFountain() {
+    const p = fountainPoint(), pulse = .5 + .5 * Math.sin(elapsed * 4);
+    ellipse(p.x, p.y + 5, 37, 20, `rgba(94,198,219,${.09 + pulse * .06})`, 'rgba(144,225,236,.36)', 1.5);
+    ellipse(p.x, p.y + 2, 24, 13, 'rgba(76,174,207,.24)', 'rgba(172,236,241,.62)', 1);
+    for (let i = 0; i < 3; i++) { const a = elapsed * 1.6 + i * Math.PI * 2 / 3; ellipse(p.x + Math.cos(a) * 13, p.y + Math.sin(a) * 6, 2.2, 2.2, 'rgba(193,248,255,.82)'); }
+    label('FOUNTAIN', p.x, p.y + 30, '#b8edf2');
+  }
   function drawTower(p) {
     const pulse = .5 + .5 * Math.sin(elapsed * 2.1);
     ellipse(p.x, p.y + 17, 35, 18, 'rgba(8,13,12,.37)');
@@ -97,13 +152,18 @@
     // shoulder / blade
     line(5,-3,12,-11,'#e1d3a6',2.2); line(12,-11,15,-14,'#f2e7c9',1.2);
     ctx.restore();
-    // Hero health marker
-    roundedRect(p.x-16,p.y-25,32,4,2,'rgba(8,13,12,.75)'); roundedRect(p.x-15,p.y-24,30,2,1,'#93d79b');
+    // Floating HP and mana markers
+    roundedRect(p.x-19,p.y-29,38,5,2,'rgba(8,13,12,.82)'); roundedRect(p.x-18,p.y-28,36*hero.hp/hero.maxHp,3,1,'#93d79b');
+    roundedRect(p.x-15,p.y-22,30,3,1,'rgba(8,13,12,.82)'); roundedRect(p.x-14,p.y-21,28*hero.mana/hero.maxMana,1,1,'#75c9e8');
   }
   function drawProjectile() {
-    if (!projectile) return;
-    const t = clamp(projectile.age / projectile.duration, 0, 1), sx = mix(projectile.sx, projectile.tx, t), sy = mix(projectile.sy, projectile.ty, t) - Math.sin(t*Math.PI)*28;
-    line(sx,sy,sx-10,sy+9,'rgba(202,232,175,.42)',2); ellipse(sx,sy,4,4,'#e8e9b5'); ellipse(sx,sy,8,8,'rgba(220,227,156,.25)');
+    if (projectile) {
+      const t = clamp(projectile.age / projectile.duration, 0, 1), sx = mix(projectile.sx, projectile.tx, t), sy = mix(projectile.sy, projectile.ty, t) - Math.sin(t*Math.PI)*28;
+      line(sx,sy,sx-10,sy+9,'rgba(202,232,175,.42)',2); ellipse(sx,sy,4,4,'#e8e9b5'); ellipse(sx,sy,8,8,'rgba(220,227,156,.25)');
+    }
+    if (towerShot) { const t = clamp(towerShot.age / towerShot.duration, 0, 1), x = mix(towerShot.sx, towerShot.tx, t), y = mix(towerShot.sy, towerShot.ty, t); line(towerShot.sx,towerShot.sy,x,y,'rgba(255,111,92,.5)',3); ellipse(x,y,5,5,'#ff8870'); ellipse(x,y,10,10,'rgba(242,102,83,.26)'); }
+    for (const shot of spellShots) { line(shot.x-shot.vx*.025,shot.y-shot.vy*.025,shot.x,shot.y,'rgba(183,241,220,.55)',3); ellipse(shot.x,shot.y,5,5,shot.color); ellipse(shot.x,shot.y,10,10,'rgba(183,241,220,.19)'); }
+    for (const b of bursts) { const t = b.age / b.duration; ctx.save(); ctx.globalAlpha = 1 - t; ctx.strokeStyle = b.color; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(b.x,b.y,10+t*52,5+t*29,-.38,0,Math.PI*2); ctx.stroke(); ctx.restore(); }
   }
   function drawEffects() {
     if (hitFlash > 0) { const p=towerPoint(); ellipse(p.x,p.y-28,18+hitFlash*12,18+hitFlash*12,`rgba(255,188,128,${hitFlash*.2})`); }
@@ -113,7 +173,7 @@
     ctx.clearRect(0,0,W,H); drawGround();
     // subtle screen edge vignette
     const v=ctx.createRadialGradient(W*.5,H*.48,Math.min(W,H)*.18,W*.5,H*.48,Math.max(W,H)*.78);v.addColorStop(0,'rgba(4,10,8,0)');v.addColorStop(1,'rgba(5,12,10,.38)');ctx.fillStyle=v;ctx.fillRect(0,0,W,H);
-    drawBase(.035,'#8bd3e3','BLUE KEEP',true); drawBase(.965,'#f39b7e','RED KEEP',false);
+    drawBase(.035,'#8bd3e3','BLUE KEEP',true); drawFountain(); drawBase(.965,'#f39b7e','RED KEEP',false);
     if (!towerState.dead) drawTower(towerPoint()); else { const p=towerPoint(); ellipse(p.x,p.y+5,27,15,'rgba(94,71,55,.7)'); label('RUINS',p.x,p.y-14,'#d7b6a1'); }
     drawEffects(); drawProjectile(); drawHero(heroPoint());
     updateMini();
@@ -146,9 +206,10 @@
   }
   canvas.addEventListener('contextmenu',e=>e.preventDefault()); canvas.addEventListener('pointerdown',onPointer);
   $('#attackButton').addEventListener('click',engage);
-  addEventListener('keydown',e=>{ if(e.key.toLowerCase()==='a') engage(); if(e.key==='Escape')cancelAttack(); });
+  document.querySelectorAll('.ability').forEach(button => button.addEventListener('click', () => castAbility(button.dataset.ability)));
+  addEventListener('keydown',e=>{ const key=e.key.toLowerCase(); if(key==='a') engage(); if(key==='escape')cancelAttack(); if(['q','w','e','r'].includes(key) && !e.repeat && !(e.target instanceof HTMLElement && e.target.closest('button'))) castAbility(key); });
   $('#soundToggle').addEventListener('click',()=>{soundOn=!soundOn;$('#soundToggle').classList.toggle('muted',!soundOn);$('#soundToggle').textContent=soundOn?'♫':'♩';$('#soundToast').textContent=soundOn?'Sound effects are on':'Sound effects are off';$('#soundToast').classList.add('show');setTimeout(()=>$('#soundToast').classList.remove('show'),1300);maybeSound(660);});
-  $('#restartButton').addEventListener('click',()=>{towerState.hp=100;towerState.dead=false;hero.t=.13;hero.side=0;hero.destT=null;cancelAttack();attackTimer=0;$('#victory').classList.remove('visible');$('#objectiveTitle').textContent='Red sentinel';$('#objectiveStatus').textContent='Standing • 100% integrity';$('#attackButton').disabled=false;$('#miniTower').style.opacity='1';});
+  $('#restartButton').addEventListener('click',()=>{towerState.hp=100;towerState.dead=false;hero.t=.13;hero.side=0;hero.destT=null;hero.hp=hero.maxHp;hero.mana=hero.maxMana;hero.respawn=0;Object.keys(cooldowns).forEach(k=>cooldowns[k]=0);spellShots=[];bursts=[];towerShot=null;fountainActive=false;cancelAttack();attackTimer=0;towerAttackTimer=0;$('#victory').classList.remove('visible');$('#objectiveTitle').textContent='Red sentinel';$('#objectiveStatus').textContent='Standing • 100% integrity';$('#attackButton').disabled=false;$('#miniTower').style.opacity='1';updateAbilityHud();});
   const joy=$('#joystick'),knob=$('#joyKnob');
   function joyMove(e) { const r=joy.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,dx=e.clientX-cx,dy=e.clientY-cy,max=29,len=Math.hypot(dx,dy),f=len>max?max/len:1;joystick.dx=dx*f/max;joystick.dy=dy*f/max;knob.style.transform=`translate(${dx*f}px,${dy*f}px)`; }
   joy.addEventListener('pointerdown',e=>{e.preventDefault();joy.setPointerCapture(e.pointerId);joyPointer=e.pointerId;joystick.active=true;cancelAttack();joyMove(e);});
@@ -156,14 +217,43 @@
   function joyEnd(e){if(e.pointerId!==joyPointer)return;joystick.active=false;joyPointer=null;joystick.dx=joystick.dy=0;knob.style.transform='';}
   joy.addEventListener('pointerup',joyEnd);joy.addEventListener('pointercancel',joyEnd);
   function update(dt) {
-    elapsed+=dt;hitFlash=Math.max(0,hitFlash-dt*2.7);
-    if(joystick.active){hero.t=clamp(hero.t+joystick.dx*dt*.36,.04,.94);hero.side=clamp(hero.side-joystick.dy*dt*100,-35,35);hero.moving=Math.hypot(joystick.dx,joystick.dy)>.12;}
-    else if(hero.destT!==null){const p=heroPoint(),q=lanePoint(hero.destT,hero.destSide),dist=Math.hypot(q.x-p.x,q.y-p.y);if(dist<3){hero.t=hero.destT;hero.side=hero.destSide;hero.destT=null;hero.moving=false;}else{const step=145*dt/dist;hero.t+=(hero.destT-hero.t)*Math.min(step,1);hero.side+=(hero.destSide-hero.side)*Math.min(step,1);hero.moving=true;}}
-    else hero.moving=false;
-    if(attackMode&&!towerState.dead){const tp=towerPoint(),hp=heroPoint(),dist=Math.hypot(tp.x-hp.x,tp.y-hp.y);if(dist>90){const targetT=.54-(60/Math.hypot(W*.68,H*.51));hero.t+=(targetT-hero.t)*Math.min(1,dt*1.5);hero.side*=Math.max(0,1-dt*2);hero.moving=true;}else{hero.moving=false;attackTimer-=dt;if(attackTimer<=0){attackTimer=.72;towerState.hp=Math.max(0,towerState.hp-10);hitFlash=1;const a=heroPoint(),b=towerPoint();projectile={sx:a.x,sy:a.y-10,tx:b.x,ty:b.y-27,age:0,duration:.19};maybeSound(300+Math.random()*100);if(towerState.hp===0){towerState.dead=true;attackMode=false;projectile=null;maybeSound(180);$('#victory').classList.add('visible');$('#objectiveTitle').textContent='Lane secured';$('#objectiveStatus').textContent='Destroyed • 0% integrity';$('#attackLabel').textContent='VICTORY';$('#attackSub').textContent='Objective complete';$('#attackButton').classList.remove('engaged');$('#hintText').innerHTML='Tower destroyed<br /><b>Objective complete</b>';showToast('Red Sentinel destroyed');}}}}
-    if(projectile){projectile.age+=dt;if(projectile.age>=projectile.duration)projectile=null;}
-    $('#objectiveStatus').textContent=towerState.dead?'Destroyed • 0% integrity':`Standing • ${Math.ceil(towerState.hp)}% integrity`;
-    $('#miniHero').style.filter=hero.moving?'brightness(1.5)':'none';
+    elapsed += dt; hitFlash = Math.max(0, hitFlash - dt * 2.7);
+    for (const id of Object.keys(cooldowns)) cooldowns[id] = Math.max(0, cooldowns[id] - dt);
+    bursts = bursts.filter(b => (b.age += dt) < b.duration);
+    if (hero.respawn > 0) {
+      hero.respawn = Math.max(0, hero.respawn - dt); hero.t = .035; hero.side = 0; hero.destT = null; hero.moving = false;
+      if (hero.respawn === 0) { hero.hp = 65; hero.mana = Math.max(hero.mana, 55); showToast('Wayfarer has returned'); }
+    } else {
+      if (joystick.active) { hero.t = clamp(hero.t + joystick.dx * dt * .36, .04, .94); hero.side = clamp(hero.side - joystick.dy * dt * 100, -35, 35); hero.moving = Math.hypot(joystick.dx, joystick.dy) > .12; }
+      else if (hero.destT !== null) { const p = heroPoint(), q = lanePoint(hero.destT, hero.destSide), dist = Math.hypot(q.x - p.x, q.y - p.y); if (dist < 3) { hero.t = hero.destT; hero.side = hero.destSide; hero.destT = null; hero.moving = false; } else { const step = 145 * dt / dist; hero.t += (hero.destT - hero.t) * Math.min(step, 1); hero.side += (hero.destSide - hero.side) * Math.min(step, 1); hero.moving = true; } }
+      else hero.moving = false;
+      if (attackMode && !towerState.dead) { const tp = towerPoint(), hp = heroPoint(), dist = Math.hypot(tp.x - hp.x, tp.y - hp.y); if (dist > 90) { const laneLength = Math.hypot(W * .68, H * .51), targetT = .54 - (60 / laneLength), approachDist = Math.hypot((targetT - hero.t) * laneLength, hero.side), step = Math.min(1, 145 * dt / Math.max(approachDist, 1)); hero.t += (targetT - hero.t) * step; hero.side *= 1 - step; hero.moving = true; } else { hero.moving = false; attackTimer -= dt; if (attackTimer <= 0) { attackTimer = .72; const a = heroPoint(), b = towerPoint(); projectile = { sx: a.x, sy: a.y - 10, tx: b.x, ty: b.y - 27, age: 0, duration: .19 }; damageTower(10); } } }
+      if (!towerState.dead) {
+        const tp = towerPoint(), hp = heroPoint(), distance = Math.hypot(tp.x - hp.x, tp.y - hp.y);
+        if (distance < 285) { towerAttackTimer -= dt; if (towerAttackTimer <= 0 && !towerShot) { towerAttackTimer = 1.1; towerShot = { sx: tp.x, sy: tp.y - 30, tx: hp.x, ty: hp.y - 6, age: 0, duration: .32, damage: 13 }; maybeSound(170); } }
+        else towerAttackTimer = Math.min(towerAttackTimer, .25);
+      }
+      fountainActive = nearFountain();
+      hero.hp = Math.min(hero.maxHp, hero.hp + dt * (fountainActive ? 48 : .7));
+      hero.mana = Math.min(hero.maxMana, hero.mana + dt * (fountainActive ? 40 : 2.4));
+    }
+    if (projectile) { projectile.age += dt; if (projectile.age >= projectile.duration) projectile = null; }
+    if (towerShot) { towerShot.age += dt; if (towerShot.age >= towerShot.duration) { hero.hp = Math.max(0, hero.hp - towerShot.damage); addBurst(towerShot.tx, towerShot.ty, '#ff8170'); towerShot = null; if (hero.hp <= 0) { hero.respawn = 2.2; hero.mana = Math.max(0, hero.mana - 12); cancelAttack(); showToast('Wayfarer down — respawning at the Blue Fountain'); } } }
+    const tp = towerPoint();
+    for (const shot of spellShots) {
+      const stepX = shot.vx * dt, stepY = shot.vy * dt; shot.x += stepX; shot.y += stepY; shot.age += dt; shot.traveled += Math.hypot(stepX, stepY);
+      if (!towerState.dead && shot.traveled <= shot.range && Math.hypot(shot.x - tp.x, shot.y - (tp.y - 25)) < 24) { damageTower(shot.damage); addBurst(tp.x, tp.y - 22, shot.color); shot.hit = true; }
+      if (shot.traveled >= shot.range || shot.hit) shot.remove = true;
+    }
+    spellShots = spellShots.filter(shot => !shot.remove);
+    $('#heroHealthBar').style.width = `${100 * hero.hp / hero.maxHp}%`; $('#heroHealthValue').textContent = Math.ceil(hero.hp);
+    $('#heroManaBar').style.width = `${100 * hero.mana / hero.maxMana}%`; $('#heroManaValue').textContent = Math.ceil(hero.mana);
+    $('#objectiveStatus').textContent = towerState.dead ? 'Destroyed • 0% integrity' : `Standing • ${Math.ceil(towerState.hp)}% integrity`;
+    $('#miniHero').style.filter = hero.moving ? 'brightness(1.5)' : 'none';
+    if (fountainActive) $('#hintText').innerHTML = 'Fountain active<br /><b>Rapidly restoring HP + Mana</b>';
+    else if (hero.respawn > 0) $('#hintText').innerHTML = `Respawning • ${Math.ceil(hero.respawn)}s<br /><b>Returning to Blue Base</b>`;
+    else if (!towerState.dead) $('#hintText').innerHTML = attackMode ? 'Target locked • advancing<br /><b>Wayfarer attacks on arrival</b>' : 'Right-click anywhere to move<br /><b>Click the tower to engage</b>';
+    updateAbilityHud();
   }
   function frame(now){const dt=Math.min(.04,(now-last)/1000);last=now;update(dt);render();requestAnimationFrame(frame);}requestAnimationFrame(frame);
 })();
