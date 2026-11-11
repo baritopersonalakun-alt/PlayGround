@@ -32,10 +32,17 @@
 
     <div class="side-note glass"><span class="note-icon">✧</span><span id="hintText">Right-click anywhere to move<br /><b>Click the tower to engage</b></span></div>
 
+    <section class="ability-bar" aria-label="Hero abilities">
+      <button class="ability" data-ability="q" aria-label="Q: Arc Bolt, 18 mana"><span class="ability-key">Q</span><b>ARC BOLT</b><small>18 MP</small><i class="cooldown-mask"></i><em class="cooldown-text"></em></button>
+      <button class="ability" data-ability="w" aria-label="W: Blink, 20 mana"><span class="ability-key">W</span><b>BLINK</b><small>20 MP</small><i class="cooldown-mask"></i><em class="cooldown-text"></em></button>
+      <button class="ability" data-ability="e" aria-label="E: Nova, 28 mana"><span class="ability-key">E</span><b>NOVA</b><small>28 MP</small><i class="cooldown-mask"></i><em class="cooldown-text"></em></button>
+      <button class="ability ultimate" data-ability="r" aria-label="R: Starfall ultimate, 50 mana"><span class="ability-key">R</span><b>STARFALL</b><small>50 MP</small><i class="cooldown-mask"></i><em class="cooldown-text"></em></button>
+    </section>
+
     <section class="bottom-hud">
       <div class="hero-card glass">
         <div class="portrait"><span class="portrait-glyph">♙</span><i class="level-badge">1</i><i class="online-dot"></i></div>
-        <div class="hero-meta"><div class="hero-name">WAYFARER <span>LV. 1</span></div><div class="hero-role">VANGUARD <i>·</i> BLUE ORDER</div><div class="hero-health"><div class="health-track"><i id="heroHealthBar"></i></div><b>100%</b></div></div>
+        <div class="hero-meta"><div class="hero-name">WAYFARER <span>LV. 1</span></div><div class="hero-role">VANGUARD <i>·</i> BLUE ORDER</div><div class="hero-resource"><span>HP</span><div class="health-track"><i id="heroHealthBar"></i></div><b id="heroHealthValue">100</b></div><div class="hero-resource mana-resource"><span>MP</span><div class="health-track"><i id="heroManaBar"></i></div><b id="heroManaValue">100</b></div></div>
       </div>
       <div class="controls-hint"><span class="mouse-icon">R</span><span>MOVE</span><span class="hint-divider">·</span><span class="mouse-icon target-icon">↖</span><span>TARGET</span></div>
       <button class="attack-button" id="attackButton"><span class="attack-symbol">⚔</span><span><b id="attackLabel">ATTACK</b><small id="attackSub">Select a target</small></span><kbd>A</kbd></button>
