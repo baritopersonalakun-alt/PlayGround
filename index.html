@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#101917" />
+  <title>Riftbound — Lane One</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="game-shell" aria-label="Riftbound lane skirmish">
+    <canvas id="game" aria-label="Isometric battlefield. Click or right-click to move and select the red tower to attack."></canvas>
+
+    <header class="topbar">
+      <div class="brand"><div class="brand-mark">✦</div><div><strong>RIFTBOUND</strong><span>FIELD SIMULATION <i>•</i> OFFLINE</span></div></div>
+      <div class="match-info"><span class="live-dot"></span><span>LANE ONE</span><b> / </b><span>TRAINING GROUNDS</span></div>
+      <button class="icon-button" id="soundToggle" aria-label="Toggle sound" title="Toggle sound">♫</button>
+    </header>
+
+    <section class="mission-card glass">
+      <div class="eyebrow"><span class="eyebrow-line"></span> FIELD OBJECTIVE</div>
+      <h1>Break the line.</h1>
+      <p>Destroy the <span class="red-text">enemy tower</span> to secure the lane.</p>
+      <div class="objective-row"><div class="objective-icon">⌖</div><div><strong id="objectiveTitle">Red sentinel</strong><small id="objectiveStatus">Standing • 100% integrity</small></div><span class="objective-arrow">↗</span></div>
+    </section>
+
+    <section class="minimap glass" aria-label="Mini map">
+      <div class="mini-head"><span>TACTICAL MAP</span><span class="mini-live">● LIVE</span></div>
+      <div class="mini-map"><div class="mini-lane"></div><span class="mini-base blue"></span><span class="mini-base red"></span><span class="mini-hero" id="miniHero"></span><span class="mini-tower" id="miniTower"></span></div>
+      <div class="mini-labels"><span>BLUE</span><span>RED</span></div>
+    </section>
+
+    <div class="side-note glass"><span class="note-icon">✧</span><span id="hintText">Right-click anywhere to move<br /><b>Click the tower to engage</b></span></div>
+
+    <section class="bottom-hud">
+      <div class="hero-card glass">
+        <div class="portrait"><span class="portrait-glyph">♙</span><i class="level-badge">1</i><i class="online-dot"></i></div>
+        <div class="hero-meta"><div class="hero-name">WAYFARER <span>LV. 1</span></div><div class="hero-role">VANGUARD <i>·</i> BLUE ORDER</div><div class="hero-health"><div class="health-track"><i id="heroHealthBar"></i></div><b>100%</b></div></div>
+      </div>
+      <div class="controls-hint"><span class="mouse-icon">R</span><span>MOVE</span><span class="hint-divider">·</span><span class="mouse-icon target-icon">↖</span><span>TARGET</span></div>
+      <button class="attack-button" id="attackButton"><span class="attack-symbol">⚔</span><span><b id="attackLabel">ATTACK</b><small id="attackSub">Select a target</small></span><kbd>A</kbd></button>
+    </section>
+
+    <div class="joystick-wrap" id="joystick" aria-label="Virtual movement joystick"><div class="joy-ring"><div class="joy-center"></div><div class="joy-knob" id="joyKnob"></div></div></div>
+    <div class="toast" id="toast" role="status"></div>
+    <div class="victory-overlay" id="victory"><div class="victory-card glass"><div class="victory-sigil">✦</div><div class="eyebrow">OBJECTIVE COMPLETE</div><h2>Lane secured.</h2><p>The Red Sentinel has fallen. The path to the enemy base is open.</p><button id="restartButton">PLAY AGAIN <span>↻</span></button></div></div>
+    <div class="sound-toast" id="soundToast">Sound effects are off</div>
+  </main>
+  <script src="game.js"></script>
+</body>
+</html>
